@@ -1,6 +1,7 @@
 #include "stm32f030x8.h"
 #include  <stdio.h>
 
+
 #include "usart.h"
 
 
@@ -11,19 +12,13 @@ int brr_calc(void);
 void uart2_write(int ch);
 int __io_putchar(int ch);
 
-void init_usart_tx(void)
-{
-	usart_gpio_init();
-	usart_init();
-}
 
 
-
-int __io_putchar(int ch)
-{
-	uart2_write(ch);
-	return ch;
-}
+//int __io_putchar(int ch)
+//{
+//	uart2_write(ch);
+//	return ch;
+//}
 
 void uart2_write(int ch)
 {
@@ -59,7 +54,7 @@ void usart_gpio_init(void)
 
 void usart_init(void)
 {
-	int baud_rate = 69;
+	int baud_rate = 833; //69  for 115200 , 833 for 9600
 
 	USART_NAME->BRR = baud_rate;
 
@@ -68,6 +63,12 @@ void usart_init(void)
 	USART_NAME->CR1 = USART_TE_EN;
 
 	USART_NAME->CR1 |= USART_EN;
+}
+
+void init_usart_tx(void)
+{
+	usart_gpio_init();
+	usart_init();
 }
 
 
