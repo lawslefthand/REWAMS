@@ -12,19 +12,24 @@ void flow_rcc_en(void) {
 
 	/* (1) Enable the peripheral clock of Timer 1 */
 	/* (2) Enable the peripheral clock of GPIOA */
-	/* (3) Select Alternate function mode (10) on GPIOA pin 9 */
-	/* (4) Select TIM1_CH2 on PA9 by enabling AF2 for pin 9 in GPIOA AFRH
+	/* (3) Select Alternate function mode (2) on GPIOA pin 11 */
+	/* (4) Select TIM1_CH1 on PA10 by enabling AF2 for pin 8 in GPIOA AFRH
 	 register */
 	RCC->APB2ENR |= RCC_APB2ENR_TIM1EN; /* (1) */
 	RCC->AHBENR |= RCC_AHBENR_GPIOAEN; /* (2) */
-	GPIOA->MODER = (GPIOA->MODER & ~(GPIO_MODER_MODER9))
-			| (GPIO_MODER_MODER9_1); /* (3) */
-	GPIOA->AFR[1] |= 0x2 << ((9 - 8) * 4); /* (4) */
+	GPIOA->MODER &=~ (1<<16); /* (3) */
+	GPIOA->MODER |= (1<<17);
+	GPIOA->AFR[1] &=~ (1 << 0); //SETTING PA8 ALTERNATE FUNCTION MODE TO TIM1_CH1
+	GPIOA->AFR[1] |= (1 << 1);
+	GPIOA->AFR[1] &= ~(1 << 2);
+	GPIOA->AFR[1] &= ~(1 << 3);   /* (4) */
 
 }
 
 void timer_config(void) {
 
+
+	//modified for channel 4
 	 /* (1) Configure channel 2 to detect rising edges on the TI2 input by
 	    writing CC2S = ‘01’, and configure the input filter duration by
 	    writing the IC2F[3:0] bits in the TIMx_CCMR1 register (if no filter
@@ -35,8 +40,8 @@ void timer_config(void) {
 	    Select TI2 as the trigger input source by writing TS=110
 	    in the TIMx_SMCR register.*/
 	 /* (4) Enable the counter by writing CEN=1 in the TIMx_CR1 register. */
-	 TIM1->CCMR1 |= TIM_CCMR1_IC2F_0 | TIM_CCMR1_IC2F_1| TIM_CCMR1_CC2S_0; /* (1) */
-	 TIM1->CCER &= (uint16_t)(~TIM_CCER_CC2P); /* (2) */
+	 TIM1->CCMR1 |= TIM_CCMR1_IC1F_0 | TIM_CCMR1_IC1F_1| TIM_CCMR1_CC1S_0; /* (1) */
+	 TIM1->CCER &= (uint16_t)(~TIM_CCER_CC4P); /* (2) */
 	 TIM1->SMCR |= TIM_SMCR_SMS | TIM_SMCR_TS_2 | TIM_SMCR_TS_1; /* (3) */
 	 TIM1->CR1 |= TIM_CR1_CEN; /* (4) */
 
@@ -50,6 +55,13 @@ int measurement_function(void)
 	return counter_value/7.5;
 	//delay1_ms(1000);
 
+
+}
+
+int four_sec(void)
+{
+	delay_ms(4000);
+	return 1;
 
 }
 
