@@ -47,12 +47,23 @@ void timer_config(void) {
 
 }
 
-int measurement_function(void) {
+int measurement_function(int x) {
 	uint16_t counter_value = 0;
 	counter_value = TIM1->CNT;
 	TIM1->CNT = 0;
-	return counter_value / 7.5;
-	//delay1_ms(1000);
+	if (x==0)
+	{
+	return counter_value /450;
+	}
+	else if (x ==1)
+	{
+		return counter_value;
+	}
+	else
+	{
+		return 0;
+	}
+	//delay_ms(1000);
 
 }
 
@@ -83,7 +94,7 @@ void delay_ms(uint32_t ms) {
 
 void delay_seconds(uint32_t sec) {
 	for (uint32_t i = 0; i < sec; ++i) {
-		delay_ms(1000); 
+		delay_ms(1000);
 	}
 }
 
