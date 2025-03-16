@@ -21,69 +21,34 @@ int main() {
 	//bmp_i2c_setup(); //bmp280 sensor init
 	flow_init(); //yfs-201 init
 	hc12_init(); //hc12 init
-	//neo6m_init(); //neo6m init
+	neo6m_init(); //neo6m init
 	adc_init(); //all adcs init
 
 	printf("debug initialization second\n");
 
-
 	while (1) {
 
-		//neo6m_read();
+		int i = 0;
+		int j = 0;
 
-	//	hc12_write_char("hello");
+		printf("Gps NMEA Data:\n");
+		while (i <= 800000) {
 
-
-
-        printf("progress\n");
-        water_turbidity();
-        water_detection();
-        printf("Flow rate is %d Litre/Min\n", measurement_function());
-
-      //  bmp_i2c_write(0xF5, 0xFF); //Recommended to apply init every loop if power loss is to be expected.
-      //  bmp_i2c_write(0xF4, 0xFF);
-
-      //  printf("Temperature: %fC\n", temperature(0));
-     //   pressure();
-
-
-		/*
-		int flag1 = 0;
-		int flag2 = 0;
-		//all looping functions come here
-
-		x
-		printf("lol\n");
-
-		printf("debug super loop\n");
-
-		//if(water_detection() == 1)
-		//{
-		while (flag1 <= 80000000) {
-			flag1++;
-			//printf("debug while first\n");
 			neo6m_read();
-
+			i++;
 		}
+		printf("Sensory data\n");
+		printf("progress\n");
+		water_turbidity();
+		water_detection();
+		printf("Flow rate is %d Litre/Min\n", measurement_function());
+		calculate_ppm(3.3, 10000, 10000);
 
-		while (flag2 <= 10) {
-			flag2++;
-			printf("debug while second\n");
-
-
-
-
-
-
-		}
-		*/
-		//}
-		//else
-		//{
-		//printf("No water detected, waiting for water");
-		//add delay here 2-3 seconds
-		delay_ms(1000);
-		//}
+		//  bmp_i2c_write(0xF5, 0xFF); //Recommended to apply init every loop if power loss is to be expected.
+		//  bmp_i2c_write(0xF4, 0xFF);
+		//  printf("Temperature: %fC\n", temperature(0));
+		//   pressure();	
+		delay_ms(2000);
 
 	}
 }
