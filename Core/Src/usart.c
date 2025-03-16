@@ -12,13 +12,14 @@ int brr_calc(void);
 void uart2_write(int ch);
 int __io_putchar(int ch);
 
-
-
-//int __io_putchar(int ch)
-//{
-//	uart2_write(ch);
-//	return ch;
-//}
+//uncomment for serial debugging
+/*
+int __io_putchar(int ch)
+{
+	uart2_write(ch);
+	return ch;
+}
+*/
 
 void uart2_write(int ch)
 {
