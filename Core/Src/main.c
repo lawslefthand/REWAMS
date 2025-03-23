@@ -48,8 +48,8 @@ int main() {
 		water_turbidity();
 		water_detection();
 		printf("Flow rate is %d Litre/Min\n", measurement_function());
-		volume = measurement_function() / 450;
-		printf("Volume of water passed is %dL\n", volume);
+		volume = measurement_function();
+		printf("Volume of water passed is %dL\n", volume/450);
 		mq2_gas_sensor();
 		mq7_gas_sensor();
 
