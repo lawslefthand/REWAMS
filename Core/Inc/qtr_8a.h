@@ -19,6 +19,7 @@ void gpio_config(void);
 void adc_enable(void);
 void adc_disable(void);
 void adc_config(void);
+void adc_init(void);
 long unsigned int conv_start1(void);
 long unsigned int conv_start2(void);
 long unsigned int  conv_start3(void);

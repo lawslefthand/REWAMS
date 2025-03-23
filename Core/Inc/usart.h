@@ -23,7 +23,6 @@
 
 void usart_gpio_init(void);
 void usart_init(void);
-void usart_gpio_init(void);
 int brr_calc(void);
 void uart2_write(int ch);
 int __io_putchar(int ch);

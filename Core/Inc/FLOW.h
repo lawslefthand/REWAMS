@@ -16,6 +16,8 @@ void flow_init(void);
 void delay_ms(uint32_t  ms);
 void delay_seconds(uint32_t sec);
 void delay_minutes(uint32_t min);
+int four_sec(void);
+
 
 
 #endif /* FLOW_H_ */
