@@ -116,7 +116,7 @@ long unsigned int conv_start6(void) {
     while ((ADC1->ISR & ADC_ISR_EOC) == 0) {
     }
     ADC_Result6 = ADC1->DR;
-    printf("Sensor %d, result: %lu\n", 6, ADC_Result6);
+    //printf("Sensor %d, result: %lu\n", 6, ADC_Result6);
 
     return ADC_Result6;
 }
