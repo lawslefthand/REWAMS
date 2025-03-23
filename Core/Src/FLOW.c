@@ -39,6 +39,7 @@ void timer_config(void) {
 	 in the TIMx_SMCR register.*/
 	/* (4) Enable the counter by writing CEN=1 in the TIMx_CR1 register. */
 	TIM1->CCMR1 |= TIM_CCMR1_IC1F_0 | TIM_CCMR1_IC1F_1 | TIM_CCMR1_CC1S_0; /* (1) */
+	TIM1->CCER |= TIM_CCER_CC1E; // ENABLE input capture on channel 1!
 	TIM1->CCER &= (uint16_t) (~TIM_CCER_CC1P); /* (2) */
 	TIM1->SMCR |= TIM_SMCR_SMS_2 | TIM_SMCR_SMS_1 | TIM_SMCR_SMS_0; // SMS = 111 (3)
 	TIM1->SMCR |= TIM_SMCR_TS_2 | TIM_SMCR_TS_0;            // TS = 101 → TI1FP1
@@ -47,23 +48,13 @@ void timer_config(void) {
 
 }
 
-int measurement_function(int x) {
-	uint16_t counter_value = 0;
+int measurement_function(void) {
+	int counter_value = 0;
 	counter_value = TIM1->CNT;
 	TIM1->CNT = 0;
-	if (x==0)
-	{
-	return counter_value /450;
-	}
-	else if (x ==1)
-	{
-		return counter_value;
-	}
-	else
-	{
-		return 0;
-	}
-	//delay_ms(1000);
+	return counter_value/7.5;
+
+
 
 }
 
@@ -79,16 +70,13 @@ void delay1_ms(int delay) {
 }
 
 void delay_ms(uint32_t ms) {
-	// Assuming SystemCoreClock is set to the CPU clock frequency
-	SysTick->LOAD = (SystemCoreClock / 8000) * ms - 1; // Load the number of clock cycles for 1 ms
-	SysTick->VAL = 0; // Clear the current value register
-	SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk; // Enable the SysTick timer
+	SysTick->LOAD = (SystemCoreClock / 8000) * ms - 1;
+	SysTick->VAL = 0;
+	SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk;
 
-	// Wait until the COUNTFLAG is set
 	while ((SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk) == 0)
 		;
 
-	// Disable the SysTick timer
 	SysTick->CTRL &= ~SysTick_CTRL_ENABLE_Msk;
 }
 

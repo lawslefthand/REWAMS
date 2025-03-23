@@ -37,6 +37,13 @@ void adc_config(void) {
     ADC1->SMPR |= ADC_SMPR_SMP_0 | ADC_SMPR_SMP_1 | ADC_SMPR_SMP_2; // Configure sampling time
 }
 
+void adc_init(void)
+{
+		clk_enable();
+		gpio_config();
+		adc_config();
+}
+
 long unsigned int conv_start1(void) {
     ADC1->CHSELR = ADC_CHSELR_CHSEL0;
     long unsigned int ADC_Result1;
@@ -45,7 +52,7 @@ long unsigned int conv_start1(void) {
         // Wait for conversion to complete
     }
     ADC_Result1 = ADC1->DR;
-    printf("Sensor %d, result: %lu\n", 1, ADC_Result1);
+  //  printf("Sensor %d, result: %lu\n", 1, ADC_Result1);
 
     return ADC_Result1;
 }
@@ -58,7 +65,7 @@ long unsigned int conv_start2(void) {
         
     }
     ADC_Result2 = ADC1->DR;
-    printf("Sensor %d, result: %lu\n", 2, ADC_Result2);
+    //printf("Sensor %d, result: %lu\n", 2, ADC_Result2);
 
     return ADC_Result2;
 }
@@ -71,7 +78,7 @@ long unsigned int conv_start3(void) {
         
     }
     ADC_Result3 = ADC1->DR;
-    printf("Sensor %d, result: %lu\n", 3, ADC_Result3);
+   // printf("Sensor %d, result: %lu\n", 3, ADC_Result3);
 
     return ADC_Result3;
 }
@@ -84,7 +91,7 @@ long unsigned int conv_start4(void) {
         
     }
     ADC_Result4 = ADC1->DR;
-    printf("Sensor %d, result: %lu\n", 4, ADC_Result4);
+    //printf("Sensor %d, result: %lu\n", 4, ADC_Result4);
 
     return ADC_Result4;
 }
@@ -97,7 +104,7 @@ long unsigned int conv_start5(void) {
         
     }
     ADC_Result5 = ADC1->DR;
-    printf("Sensor %d, result: %lu\n", 5, ADC_Result5);
+    //printf("Sensor %d, result: %lu\n", 5, ADC_Result5);
 
     return ADC_Result5;
 }
