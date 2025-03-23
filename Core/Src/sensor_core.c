@@ -79,23 +79,23 @@ void mq2_gas_sensor(void) {
     }
 }
 
-void mq8_gas_sensor(void) {
+void mq9_gas_sensor(void) {
     int mq8_reading = 0;
     float voltage = 0.0;
     adc_enable();
     mq8_reading = conv_start5();
     adc_disable();
 
-    voltage = (mq8_reading / 4095.0) * 3.3;
+    voltage = (mq9_reading / 4095.0) * 3.3;
 
-    printf("MQ-8 Gas Sensor Reading: %d (Voltage: %.2f V)\n", mq8_reading, voltage);
+    printf("MQ-9 Gas Sensor Reading: %d (Voltage: %.2f V)\n", mq8_reading, voltage);
 
     if (voltage < 0.8) {
-        printf("Hydrogen Concentration: Low\n");
+        printf("CO Concentration: Low\n");
     } else if (voltage >= 0.8 && voltage < 1.5) {
-        printf("Hydrogen Concentration: Moderate\n");
+        printf("CO Concentration: Moderate\n");
     } else {
-        printf("Hydrogen Concentration: High - Dangerous Levels!\n");
+        printf("CO Concentration: High - Dangerous Levels!\n");
     }
 }
 
