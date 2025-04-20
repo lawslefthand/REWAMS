@@ -58,7 +58,7 @@ int main() {
 	pwm_upcounter_config();
 	bmp_i2c_setup();
 	printf("initialization complete\n");
-	//delay_ms(2000);
+	//
 
 	while (1) {
 
@@ -119,8 +119,14 @@ int main() {
 		l++;
 		flow_roc = (flow_array[1] - flow_array[0]) / (0.009520119 + 3);
 
-		water_turbidity();
-		water_detection();
+		if (water_detection() == 1)
+		{
+			printf("Water detected!\n");
+		}
+		else
+		{
+			printf("Waiting for water\n");
+		}
 		printf("Flow rate is %dLitres per Minute\n", flow);
 		printf("Turbine RPM is %d\n", turbine_rot);
 		printf("Volume is %d\n", vol);
@@ -133,30 +139,32 @@ int main() {
 			//ONLY USE ROC_2 FUNCTIONS
 
 			if (temp_roc > 1500 || temp_roc < -1500) {
-				printf("Temperature Rate of change %f\n", temp_roc_2);
+				printf("Temperature ROC %f\n", temp_roc_2);
 			} else {
 				temp_roc_2 = temp_roc;
-				printf("Temperature Rate of change %f\n", temp_roc_2);
+				printf("Temperature ROC %f\n", temp_roc_2);
 			}
 
 			if (press_roc > 1500 || press_roc < -1500) {
-				printf("Pressure Rate of change %f\n", press_roc_2);
+				printf("Pressure ROC %f\n", press_roc_2);
 
 			} else {
 				press_roc_2 = press_roc;
-				printf("Pressure Rate of change %f\n", press_roc_2);
+				printf("Pressure ROC %f\n", press_roc_2);
 			}
 
 			if (flow_roc > 1500 || flow_roc < -1500) {
-				printf("Flow rate, Rate of Change %d\n", flow_roc_2);
+				printf("Flow rate ROC %d\n", flow_roc_2);
 			} else {
 				flow_roc_2 = flow_roc;
-				printf("Flow rate, Rate of Change %d\n", flow_roc_2);
+				printf("Flow rate ROC %d\n", flow_roc_2);
 			}
 
 			//PUT EXTRA FUNCTION HERE
 
 			}
+
+		delay_ms(3000);
 
 
 		//DO NOT TOUCH INCREMENT OPERATOR
