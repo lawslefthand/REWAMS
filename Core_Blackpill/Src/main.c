@@ -12,7 +12,6 @@
 #include "ISOLATION.h"
 #include "welford.h"
 
-#define WINDOW_SIZE 5
 
 // Welford window buffers and counters
 double WELFORD_temp[WINDOW_SIZE];
