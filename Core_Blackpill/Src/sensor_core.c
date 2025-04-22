@@ -19,15 +19,17 @@ int water_detection(void) {
 	int water_voltage = 0;
 	//int threshold = WATER_THRESHOLD;
 
-	water_voltage = conv_start1();
+	water_voltage = conv_start2();
 	printf("water voltage reading %d\n", water_voltage); //for debugging
 
-	if (water_voltage > 0) {
-		return 1;
-	} else {
+	if (water_voltage > 35) {
 		return 0;
+	} else {
+		return 1;
 	}
 }
+
+/*
 
 void water_turbidity(void) {
 	int turbidity_reading = 0;
@@ -35,6 +37,8 @@ void water_turbidity(void) {
 	printf("Turbidity level is %d\n", turbidity_reading);
 
 }
+
+*/
 
 /*
  void mq7_gas_sensor(void) {
