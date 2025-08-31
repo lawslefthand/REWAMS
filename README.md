@@ -1,6 +1,7 @@
 # REW&MS: River Early Warning & Monitoring System
 
-![image](https://github.com/user-attachments/assets/48b850f0-10f8-447a-97b8-c95c4afbf084)
+<img width="374" height="512" alt="image" src="https://github.com/user-attachments/assets/bb844d2e-a0bd-4c59-ab2a-99ca32d7ea1f" />
+
 
 
 **REW&MS** (River Early Warning & Monitoring System) is a drone-based, fully autonomous environmental monitoring platform designed to assess river health and predict flood risks in real-time. The system integrates an ARM-based Pixhawk Flight Control Unit (FCU) with an ARM-based STM32F030R8 microcontroller powering a comprehensive sensor pod. The architecture ensures efficient data collection, communication, and storage for reliable, long-term analysis.
