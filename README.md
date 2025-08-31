@@ -1,6 +1,6 @@
 # REW&MS: River Early Warning & Monitoring System
 
-<img width="374" height="512" alt="image" src="https://github.com/user-attachments/assets/bb844d2e-a0bd-4c59-ab2a-99ca32d7ea1f" />
+<img width="512" height="374" alt="image" src="https://github.com/user-attachments/assets/aa00ee3f-04f3-4efe-81b7-2f60550d1c6f" />
 
 
 
