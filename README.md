@@ -126,14 +126,8 @@
 ---
 
 ## Images
-
-![WhatsApp Image 2025-03-23 at 3 21 33 PM (2)](https://github.com/user-attachments/assets/2b13958d-abf3-4156-a200-42c2cca565a3)
-![WhatsApp Image 2025-03-23 at 3 21 31 PM](https://github.com/user-attachments/assets/40d34247-2e08-49d3-bf15-8fee57c04a97)
-![WhatsApp Image 2025-03-23 at 3 21 33 PM](https://github.com/user-attachments/assets/2b80c17b-aed8-442d-8e4e-126b76aa4f86)
-![WhatsApp Image 2025-03-23 at 3 21 33 PM (1)](https://github.com/user-attachments/assets/8408b56d-690c-4a64-8eed-c8c4302ffb99)
-![WhatsApp Image 2025-03-23 at 3 21 34 PM](https://github.com/user-attachments/assets/c23837fe-4320-40f0-a8e6-c27c81bf6774)
-![WhatsApp Image 2025-03-23 at 3 21 37 PM](https://github.com/user-attachments/assets/a9028501-8111-46d6-a37e-22dad1bc2e1b)
-![WhatsApp Image 2025-03-23 at 3 21 39 PM](https://github.com/user-attachments/assets/8ea2778a-70dc-4b05-be1c-24ad7ad949ff)
+<img width="864" height="1184" alt="image" src="https://github.com/user-attachments/assets/9c5ca8c4-ce12-4449-bf62-ea6b0b99cabd" />
+<img width="864" height="1184" alt="image" src="https://github.com/user-attachments/assets/e6dc98f9-71a6-4b88-bd2f-b82d2f17738f" />
 
 
 This project is licensed under the MIT License. See `LICENSE` file for details.
