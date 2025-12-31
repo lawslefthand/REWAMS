@@ -6,8 +6,8 @@ from ultralytics import YOLO
 from gps_reader import GPSReader
 
 MODEL_PATH = "/home/aryan/Downloads/best_ncnn_model"
-
 CAMERA_DEV = "/dev/video0"
+
 WIDTH = 416
 HEIGHT = 416
 
@@ -77,7 +77,7 @@ def main():
     last_write = 0.0
     last_loop = time.time()
 
-    print("Scout running (headless)")
+    print("Scout running headless")
 
     while time.time() - start < RUN_TIME:
         ret, frame = cap.read()
@@ -110,13 +110,15 @@ def main():
         used = set()
 
         for cx, cy in detections:
-            best, best_d = None, 1e9
+            best = None
+            best_d = 1e9
             for i, t in enumerate(tracks):
                 if i in used:
                     continue
                 d = math.hypot(cx - t["px"][0], cy - t["px"][1])
                 if d < MATCH_RADIUS and d < best_d:
-                    best, best_d = i, d
+                    best = i
+                    best_d = d
 
             if best is not None:
                 t = tracks[best]
@@ -151,7 +153,7 @@ def main():
     out.release()
     gps.stop()
     csvf.close()
-    print("Finished cleanly")
+    print("Scout finished")
 
 
 if __name__ == "__main__":
