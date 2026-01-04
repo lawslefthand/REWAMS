@@ -6,7 +6,7 @@ import csv
 # ===============================
 # CONFIG
 # ===============================
-CSV_PATH = "/home/danba/reload_rearm.csv"
+CSV_PATH = "/home/aryan/reload_rearm.csv"
 DEFAULT_ALT = 20          # meters
 GROUND_WAIT = 40          # seconds
 ARRIVAL_THRESH = 2.0      # meters
@@ -35,7 +35,7 @@ def load_csv_waypoints(path, default_alt=20):
 # ===============================
 # CONNECT
 # ===============================
-master = mavutil.mavlink_connection("udp:127.0.0.1:14550")
+master = mavutil.mavlink_connection("/dev/ttyAMA0", baud=57600)
 master.wait_heartbeat()
 print("Connected to vehicle")
 
