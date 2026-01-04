@@ -6,22 +6,27 @@ import csv
 # ===============================
 # CONFIG
 # ===============================
-CSV_PATH = "/home/aryan/reload_rearm.csv"
-DEFAULT_ALT = 20          # meters
-GROUND_WAIT = 40          # seconds
+CSV_PATH = "/home/danba/reload_rearm.csv"
+
+DEFAULT_ALT = 20.0        # meters
+DROP_ALT = 5.0            # meters
+HOVER_TIME = 5            # seconds
+
 ARRIVAL_THRESH = 2.0      # meters
+ALT_TOL = 0.8             # meters (REAL WORLD)
+DESCENT_TIMEOUT = 20      # seconds
+POS_TIMEOUT = 1.0         # seconds
+
+GROUND_WAIT = 40          # seconds
 
 SERVO_NUM = 9             # AUX1 = SERVO9
 SERVO_OPEN = 2000
 SERVO_CLOSE = 1000
 
-DROP_ALT = 5.0            # meters
-HOVER_TIME = 5            # seconds
-
 # ===============================
 # CSV LOADER
 # ===============================
-def load_csv_waypoints(path, default_alt=20):
+def load_csv_waypoints(path, default_alt):
     wps = []
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
@@ -35,13 +40,27 @@ def load_csv_waypoints(path, default_alt=20):
 # ===============================
 # CONNECT
 # ===============================
-master = mavutil.mavlink_connection("/dev/ttyAMA0", baud=57600)
+master = mavutil.mavlink_connection("udp:127.0.0.1:14550")
 master.wait_heartbeat()
 print("Connected to vehicle")
 
 # ===============================
 # HELPERS
 # ===============================
+def get_pos():
+    msg = master.recv_match(
+        type="GLOBAL_POSITION_INT",
+        blocking=True,
+        timeout=POS_TIMEOUT
+    )
+    if msg is None:
+        return None
+    return (
+        msg.lat / 1e7,
+        msg.lon / 1e7,
+        msg.relative_alt / 1000.0
+    )
+
 def distance_m(lat1, lon1, lat2, lon2):
     R = 6371000
     x = math.radians(lat2 - lat1)
@@ -53,7 +72,6 @@ def distance_m(lat1, lon1, lat2, lon2):
         * math.sin(y / 2) ** 2
     )
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
 
 def set_servo(pwm, label=""):
     print(f"Servo {label} | PWM = {pwm}")
@@ -67,11 +85,10 @@ def set_servo(pwm, label=""):
         0, 0, 0, 0, 0
     )
 
-
 def arm_and_takeoff(alt):
-    print("Closing servo 15 seconds before takeoff")
-    set_servo(SERVO_CLOSE, "CLOSE (pre-takeoff)")
-    time.sleep(15)
+    print("Closing servo before takeoff")
+    set_servo(SERVO_CLOSE, "CLOSE")
+    time.sleep(5)
 
     master.set_mode_apm("GUIDED")
     time.sleep(1)
@@ -79,7 +96,7 @@ def arm_and_takeoff(alt):
     master.arducopter_arm()
     time.sleep(3)
 
-    print("Taking off...")
+    print(f"Taking off to {alt} m")
     master.mav.command_long_send(
         master.target_system,
         master.target_component,
@@ -88,78 +105,32 @@ def arm_and_takeoff(alt):
         0, 0, 0, 0,
         0, 0, alt
     )
+
     time.sleep(8)
 
-
 def wait_until_landed():
-    print("Waiting for landing...")
+    print("Waiting for landing")
     while True:
-        msg = master.recv_match(
-            type="GLOBAL_POSITION_INT", blocking=True
-        )
-        alt = msg.relative_alt / 1000.0
+        pos = get_pos()
+        if pos is None:
+            continue
+        _, _, alt = pos
         if alt < 0.15:
-            print("Landed.")
+            print("Landed")
             break
         time.sleep(0.5)
 
-
-def descend_and_hover(target_alt, hover_time):
-    print(f"Descending to {target_alt} m")
-
-    # Get current position
-    msg = master.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
-    cur_lat = msg.lat
-    cur_lon = msg.lon
-
-    master.mav.set_position_target_global_int_send(
-        0,
-        master.target_system,
-        master.target_component,
-        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-        int(0b110111111000),
-        cur_lat,
-        cur_lon,
-        target_alt,
-        0, 0, 0,
-        0, 0, 0,
-        0, 0
-    )
-
-    # Wait until altitude reached
-    while True:
-        msg = master.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
-        alt = msg.relative_alt / 1000.0
-        if abs(alt - target_alt) < 0.3:
-            print(f"Reached {target_alt} m")
-            break
-        time.sleep(0.2)
-
-    print(f"Hovering for {hover_time} seconds")
-    time.sleep(hover_time)
-
-    while True:
-        msg = master.recv_match(
-            type="GLOBAL_POSITION_INT", blocking=True
-        )
-        alt = msg.relative_alt / 1000.0
-        if abs(alt - target_alt) < 0.3:
-            print(f"Reached {target_alt} m")
-            break
-        time.sleep(0.2)
-
-    print(f"Hovering for {hover_time} seconds")
-    time.sleep(hover_time)
-
-
 def goto(lat, lon, alt):
     print(f"Going to {lat}, {lon}, {alt}")
+    master.set_mode_apm("GUIDED")
+    time.sleep(0.5)
+
     master.mav.set_position_target_global_int_send(
         0,
         master.target_system,
         master.target_component,
         mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-        int(0b110111111000),
+        0b0000111111111000,
         int(lat * 1e7),
         int(lon * 1e7),
         alt,
@@ -169,57 +140,102 @@ def goto(lat, lon, alt):
     )
 
     while True:
-        msg = master.recv_match(
-            type="GLOBAL_POSITION_INT", blocking=True
-        )
-        clat = msg.lat / 1e7
-        clon = msg.lon / 1e7
-        d = distance_m(clat, clon, lat, lon)
+        pos = get_pos()
+        if pos is None:
+            continue
 
+        clat, clon, _ = pos
+        d = distance_m(clat, clon, lat, lon)
         print(f"  Distance: {d:.2f} m", end="\r")
+
         if d < ARRIVAL_THRESH:
             print("\nReached waypoint")
-
-            descend_and_hover(DROP_ALT, HOVER_TIME)
-
-            print("Opening servo after hover")
-            set_servo(SERVO_OPEN, "OPEN (after hover)")
             break
 
-        time.sleep(0.2)
+        time.sleep(0.3)
+
+def descend_and_hover(target_alt, hover_time):
+    print(f"Descending to {target_alt} m")
+    master.set_mode_apm("GUIDED")
+    time.sleep(0.5)
+
+    pos = get_pos()
+    if pos is None:
+        print("No position data, skipping descent")
+        return
+
+    lat, lon, _ = pos
+
+    master.mav.set_position_target_global_int_send(
+        0,
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+        0b0000111111111000,
+        int(lat * 1e7),
+        int(lon * 1e7),
+        target_alt,
+        0, 0, 0,
+        0, 0, 0,
+        0, 0
+    )
+
+    start = time.time()
+    while time.time() - start < DESCENT_TIMEOUT:
+        pos = get_pos()
+        if pos is None:
+            continue
+        _, _, alt = pos
+        if abs(alt - target_alt) < ALT_TOL:
+            print(f"Reached {target_alt} m")
+            break
+        time.sleep(0.3)
+    else:
+        print("Descent timeout, continuing anyway")
+
+    print(f"Hovering for {hover_time} seconds")
+    time.sleep(hover_time)
 
 # ===============================
-# MAIN LOGIC
+# MAIN
 # ===============================
 waypoints = load_csv_waypoints(CSV_PATH, DEFAULT_ALT)
-
-if len(waypoints) == 0:
+if not waypoints:
     raise RuntimeError("CSV has no waypoints")
 
-print(f"Loaded {len(waypoints)} CSV waypoints")
+print(f"Loaded {len(waypoints)} waypoints")
 
-# Initial takeoff
+# ---- MISSION TIMER START ----
+mission_start_time = time.time()
+
 arm_and_takeoff(DEFAULT_ALT)
 
 for i, (lat, lon, alt) in enumerate(waypoints, start=1):
     print(f"\n===== WAYPOINT {i}/{len(waypoints)} =====")
 
     goto(lat, lon, alt)
+    descend_and_hover(DROP_ALT, HOVER_TIME)
+
+    print("Opening servo")
+    set_servo(SERVO_OPEN, "OPEN")
 
     print("RTL")
     master.set_mode_apm("RTL")
-
     wait_until_landed()
 
-    print("Opening servo after landing")
-    set_servo(SERVO_OPEN, "OPEN (post-landing)")
-
     master.arducopter_disarm()
-    print(f"Waiting on ground for {GROUND_WAIT} seconds")
+    print(f"Ground wait {GROUND_WAIT}s")
     time.sleep(GROUND_WAIT)
 
     if i < len(waypoints):
         arm_and_takeoff(alt)
 
-print("\nMission complete. Final RTL done.")
+# ---- MISSION TIMER END ----
+mission_end_time = time.time()
+elapsed = mission_end_time - mission_start_time
 
+mins = int(elapsed // 60)
+secs = int(elapsed % 60)
+
+print("Mission complete")
+print(f"Total mission time: {mins} min {secs} sec ({elapsed:.1f} s)")
