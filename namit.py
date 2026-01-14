@@ -1,20 +1,16 @@
-#!/usr/bin/env python3
-"""
-SCOUT DRONE v3 - Competition Mode with Heading Compensation
-Handles drone rotation during flight
-"""
 import cv2
 import math
 import time
 import csv
 import signal
+import subprocess
 import numpy as np
 from ultralytics import YOLO
 from serial import Serial
 from pyubx2 import UBXReader
 import threading
+import lgpio
 
-# ===== CONFIGURATION =====
 MODEL_PATH = "/home/aryan/Desktop/best_ncnn_model"
 CAMERA_DEV = "/dev/video0"
 GPS_PORT = "/dev/ttyAMA0"
@@ -31,7 +27,19 @@ LOST_TIME = 4.0
 MATCH_RADIUS = 120
 
 VIDEO_PATH = "competition_run.avi"
-CSV_PATH = "targets.csv"
+CSV_DELIVERY = "reload_rearm.csv"      # For delivery drone (lat, lon, alt)
+CSV_DETAILED = "targets_detailed.csv"  # Full details with IDs
+
+BUZZER_PIN = 17
+BUZZER_DURATION = 2.0  # seconds to buzz when target locked
+
+# ===== MISSION TIMER =====
+MISSION_DURATION = 12 * 60  # 12 minutes in seconds
+
+# ===== DELIVERY DRONE SCP =====
+DELIVERY_DRONE_TARGET = "aryan@10.131.49.10:/home/aryan/"
+SCP_RETRY_INTERVAL = 10  # seconds between retries
+SCP_MAX_RETRIES = 30     # Max retries (5 minutes worth)
 
 # ===== HEADING CONFIGURATION =====
 # The heading (degrees) the camera was pointing during calibration
@@ -43,10 +51,83 @@ CALIBRATION_HEADING = 0.0  # Camera was pointing NORTH during calibration
 USE_FIXED_HEADING = False   # Drone rotates to face movement direction
 FIXED_CAMERA_HEADING = 0.0  # Only used if USE_FIXED_HEADING = True
 
+# ===== CALIBRATION OFFSET CORRECTION =====
+# If drone wasn't centered during calibration, the image center won't map to (0,0)
+# Enter the values shown by calibrate_v2.py: "Image center maps to ground: (X, Y) meters"
+# These will be subtracted to correct the offset
+CALIBRATION_OFFSET_EAST = 3.08   # meters (from calibration output)
+CALIBRATION_OFFSET_NORTH = 0.56  # meters (from calibration output)
+
 # Earth constants
 METERS_PER_DEG_LAT = 111320.0
 
 shutdown_flag = False
+mission_start_time = None
+
+
+def send_csv_to_delivery_drone():
+    """Send reload_rearm.csv to delivery drone via SCP"""
+    print("\n" + "=" * 60)
+    print("📡 SENDING COORDINATES TO DELIVERY DRONE")
+    print("=" * 60)
+    print(f"Target: {DELIVERY_DRONE_TARGET}")
+    print(f"File: {CSV_DELIVERY}")
+    print(f"Retry interval: {SCP_RETRY_INTERVAL}s")
+    print()
+    
+    for attempt in range(1, SCP_MAX_RETRIES + 1):
+        print(f"[SCP] Attempt {attempt}/{SCP_MAX_RETRIES}...")
+        
+        result = subprocess.run(
+            ["scp", CSV_DELIVERY, DELIVERY_DRONE_TARGET],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE
+        )
+        
+        if result.returncode == 0:
+            print(f"[SCP] ✓ CSV sent successfully to delivery drone!")
+            return True
+        else:
+            error = result.stderr.decode().strip() if result.stderr else "Unknown error"
+            print(f"[SCP] ✗ Failed: {error}")
+            if attempt < SCP_MAX_RETRIES:
+                print(f"[SCP] Retrying in {SCP_RETRY_INTERVAL}s...")
+                time.sleep(SCP_RETRY_INTERVAL)
+    
+    print(f"[SCP] ✗ Failed after {SCP_MAX_RETRIES} attempts")
+    return False
+
+
+class Buzzer:
+    """GPIO buzzer controller (active-low)"""
+    def __init__(self, pin):
+        self.pin = pin
+        self.h = lgpio.gpiochip_open(4)  # Pi 5 uses gpiochip4
+        lgpio.gpio_claim_output(self.h, pin, 1)  # Start OFF (HIGH)
+        self.buzzing = False
+        self.buzz_end = 0
+    
+    def on(self):
+        lgpio.gpio_write(self.h, self.pin, 0)  # Active-low: LOW = ON
+        self.buzzing = True
+    
+    def off(self):
+        lgpio.gpio_write(self.h, self.pin, 1)  # HIGH = OFF
+        self.buzzing = False
+    
+    def buzz_for(self, duration):
+        """Start buzzing for specified duration"""
+        self.on()
+        self.buzz_end = time.time() + duration
+    
+    def update(self):
+        """Call in main loop to auto-stop after duration"""
+        if self.buzzing and time.time() >= self.buzz_end:
+            self.off()
+    
+    def cleanup(self):
+        self.off()
+        lgpio.gpiochip_close(self.h)
 
 
 class UBXGPSReader:
@@ -126,17 +207,31 @@ class UBXGPSReader:
             self.serial.close()
 
 
-def pixel_to_ground(px, py, H):
+def pixel_to_ground(px, py, H, frame_w=FRAME_W, frame_h=FRAME_H):
     """
     Convert pixel coordinates to ground offset in meters (East, North)
     The homography is calibrated so image center = (0, 0) ground
     Returns offset in CAMERA FRAME (not world frame yet)
     """
+    # Scale pixel coordinates if frame size differs from calibration
+    try:
+        cal_size = np.load(FRAME_SIZE_PATH)
+        cal_w, cal_h = cal_size[0], cal_size[1]
+        if cal_w != frame_w or cal_h != frame_h:
+            # Scale to calibration image coordinates
+            px = px * cal_w / frame_w
+            py = py * cal_h / frame_h
+    except:
+        pass  # Use original coordinates if can't load calibration size
+    
     pt = np.array([[px, py, 1.0]], dtype=np.float64).T
     g = H @ pt
-    g /= g[2]
-    cam_east = float(g[0])   # +X = right of camera
-    cam_north = float(g[1])  # +Y = forward (direction camera points)
+    g /= g[2, 0]
+    
+    # Apply offset correction (if drone wasn't centered during calibration)
+    cam_east = float(g[0, 0]) - CALIBRATION_OFFSET_EAST
+    cam_north = float(g[1, 0]) - CALIBRATION_OFFSET_NORTH
+    
     return cam_east, cam_north
 
 
@@ -220,8 +315,10 @@ def main():
     
     gps = None
     cap = None
-    out = None
-    csv_f = None
+    out = None  # Video writer
+    csv_delivery = None
+    csv_detailed = None
+    buzzer = None
     frame_count = 0
     detection_count = 0
     last_valid_heading = CALIBRATION_HEADING  # Fallback to calibration heading
@@ -238,16 +335,17 @@ def main():
         try:
             cal_size = np.load(FRAME_SIZE_PATH)
             if cal_size[0] != FRAME_W or cal_size[1] != FRAME_H:
-                print(f"[WARNING] Calibration was for {cal_size[0]}x{cal_size[1]}, but using {FRAME_W}x{FRAME_H}")
-                print("[WARNING] Results may be inaccurate!")
+                print(f"[CALIBRATION] Calibration image: {cal_size[0]}x{cal_size[1]}, Camera: {FRAME_W}x{FRAME_H}")
+                print("[CALIBRATION] Auto-scaling pixel coordinates to match")
         except:
             print("[WARNING] Could not verify calibration frame size")
         
-        # Verify homography - center should map to (0, 0)
+        # Verify homography - center should map to (0, 0) after correction
         test_east, test_north = pixel_to_ground(FRAME_W/2, FRAME_H/2, H)
-        print(f"[CALIBRATION] Center offset: ({test_east:.2f}, {test_north:.2f}) m")
+        print(f"[CALIBRATION] Center offset (corrected): ({test_east:.2f}, {test_north:.2f}) m")
+        print(f"[CALIBRATION] Offset correction applied: ({CALIBRATION_OFFSET_EAST}, {CALIBRATION_OFFSET_NORTH}) m")
         if abs(test_east) > 1 or abs(test_north) > 1:
-            print("[WARNING] Center doesn't map to (0,0) - calibration may be off!")
+            print("[WARNING] Center doesn't map to (0,0) - check CALIBRATION_OFFSET values!")
         
         # Start GPS
         print("\n[GPS] Starting GPS reader...")
@@ -271,6 +369,11 @@ def main():
         else:
             print("[GPS] ⚠ No heading from GPS - will use last known or calibration heading")
             print("[GPS] ⚠ FOR BEST ACCURACY: Fly straight paths, heading updates when moving >0.5m/s")
+        
+        # Initialize buzzer
+        print("\n[BUZZER] Initializing GPIO 17...")
+        buzzer = Buzzer(BUZZER_PIN)
+        print("[BUZZER] ✓ Ready")
         
         # Open camera
         print("\n[CAMERA] Opening video device...")
@@ -300,22 +403,34 @@ def main():
         model = YOLO(MODEL_PATH, task="detect")
         print("[MODEL] ✓ Loaded")
         
-        # Setup video writer
+        # Setup CSVs
+        print("\n[CSV] Creating output files...")
+        csv_delivery = open(CSV_DELIVERY, "w", newline="")
+        writer_delivery = csv.writer(csv_delivery)
+        writer_delivery.writerow(["lat", "lon", "alt"])
+        print(f"[CSV] ✓ {CSV_DELIVERY} (for delivery drone)")
+        
+        csv_detailed = open(CSV_DETAILED, "w", newline="")
+        writer_detailed = csv.writer(csv_detailed)
+        writer_detailed.writerow(["target_id", "latitude", "longitude", "altitude", "distance_m", "direction", "heading_deg", "timestamp"])
+        print(f"[CSV] ✓ {CSV_DETAILED} (with IDs)")
+        
+        # Setup video writer (write frames in real-time to save memory)
         print("\n[VIDEO] Creating output file...")
         out = cv2.VideoWriter(VIDEO_PATH, cv2.VideoWriter_fourcc(*"XVID"), 10.0, (FRAME_W, FRAME_H))
         print(f"[VIDEO] ✓ {VIDEO_PATH}")
         
-        # Setup CSV
-        print("\n[CSV] Creating output file...")
-        csv_f = open(CSV_PATH, "w", newline="")
-        writer = csv.writer(csv_f)
-        writer.writerow(["target_id", "latitude", "longitude", "altitude", "distance_m", "direction", "heading_deg", "timestamp"])
-        print(f"[CSV] ✓ {CSV_PATH}")
+        # Start mission timer
+        global mission_start_time
+        mission_start_time = time.time()
+        mission_end_time = mission_start_time + MISSION_DURATION
         
         print("\n" + "=" * 60)
-        print("🎯 READY - Flying at {}m altitude".format(ALTITUDE_M))
+        print("🎯 READY - HEADLESS MODE at {}m altitude".format(ALTITUDE_M))
         print("   Heading compensation: ENABLED")
-        print("   Press Ctrl+C to stop and save")
+        print("   Buzzer: 2s on target lock")
+        print(f"   ⏱️  Mission timer: {MISSION_DURATION//60} minutes")
+        print("   Press Ctrl+C to stop early")
         print("=" * 60 + "\n")
         
         # Tracking state
@@ -333,12 +448,26 @@ def main():
             dt = now - last_ts
             last_ts = now
             
+            # Check mission timer (12 minutes)
+            elapsed = now - mission_start_time
+            remaining = MISSION_DURATION - elapsed
+            if remaining <= 0:
+                print("\n⏱️  MISSION TIME COMPLETE (12 minutes)")
+                break
+            
+            # Show timer every 60 seconds
+            if frame_count % 600 == 0:  # ~60s at 10fps
+                mins = int(remaining // 60)
+                secs = int(remaining % 60)
+                print(f"[TIMER] {mins}:{secs:02d} remaining")
+            
+            # Update buzzer (auto-stop after duration)
+            if buzzer:
+                buzzer.update()
+            
             # Get current GPS
             pos = gps.get_position()
             if not pos:
-                cv2.putText(frame, "NO GPS FIX", (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                out.write(frame)
                 continue
             
             lat0 = pos["lat"]
@@ -365,6 +494,10 @@ def main():
             
             # Run YOLO
             results = model(frame, conf=CONF_THRES, verbose=False)
+            
+            # Get annotated frame from YOLO (with boxes, labels, etc.)
+            annotated_frame = results[0].plot() if results else frame.copy()
+            
             detections = []
             
             if results and results[0].boxes:
@@ -392,12 +525,19 @@ def main():
                         best_dist = d
                 
                 if best_track is not None:
-                    # Update existing track
-                    tracks[best_track]["px"] = (cx, cy)
-                    tracks[best_track]["box"] = (x1, y1, x2, y2)
-                    tracks[best_track]["last_seen"] = now
-                    tracks[best_track]["visible_time"] += dt
-                    tracks[best_track]["conf"] = conf
+                    # Update existing track with running average for static targets
+                    t = tracks[best_track]
+                    # Exponential moving average for smoother position (static humans)
+                    alpha = 0.3  # Smoothing factor
+                    old_cx, old_cy = t["px"]
+                    new_cx = alpha * cx + (1 - alpha) * old_cx
+                    new_cy = alpha * cy + (1 - alpha) * old_cy
+                    
+                    t["px"] = (new_cx, new_cy)
+                    t["box"] = (x1, y1, x2, y2)
+                    t["last_seen"] = now
+                    t["visible_time"] += dt
+                    t["conf"] = conf
                     used_tracks.add(best_track)
                 else:
                     # New track
@@ -444,24 +584,36 @@ def main():
                     t["direction"] = direction
                     t["heading_at_lock"] = camera_heading
                     
-                    # Log to CSV
+                    # Log to delivery CSV (lat, lon, alt)
+                    writer_delivery.writerow([
+                        f"{target_lat:.7f}",
+                        f"{target_lon:.7f}",
+                        20  # Fixed altitude
+                    ])
+                    csv_delivery.flush()
+                    
+                    # Log to detailed CSV
                     timestamp = time.strftime("%H:%M:%S")
-                    writer.writerow([
+                    writer_detailed.writerow([
                         t["id"],
                         f"{target_lat:.7f}",
                         f"{target_lon:.7f}",
-                        ALTITUDE_M,
+                        20,
                         f"{distance:.1f}",
                         direction,
                         f"{camera_heading:.1f}",
                         timestamp
                     ])
-                    csv_f.flush()
+                    csv_detailed.flush()
                     
                     t["logged"] = True
                     detection_count += 1
                     
-                    print(f"🎯 TARGET #{detection_count} (ID:{t['id']})")
+                    # BUZZ for 2 seconds on target lock
+                    if buzzer:
+                        buzzer.buzz_for(BUZZER_DURATION)
+                    
+                    print(f"🎯 TARGET #{detection_count} (ID:{t['id']}) 🔊 BUZZING")
                     print(f"   Pixel: ({cx:.0f}, {cy:.0f})")
                     print(f"   Camera offset: ({cam_east:+.1f}, {cam_north:+.1f}) m")
                     print(f"   Camera HDG: {camera_heading:.1f}° → World offset: ({east_m:+.1f}E, {north_m:+.1f}N) m")
@@ -469,60 +621,39 @@ def main():
                     print(f"   GPS: {target_lat:.7f}, {target_lon:.7f}")
                     print()
             
-            # Draw on frame
+            # Add tracking info overlay on YOLO annotated frame
             for t in tracks:
                 x1, y1, x2, y2 = [int(v) for v in t["box"]]
-                cx, cy = int(t["px"][0]), int(t["px"][1])
                 
+                # Add our tracking ID and status on top of YOLO boxes
                 if t["logged"]:
-                    color = (0, 0, 255)  # Red = confirmed
-                    thickness = 3
-                elif t["visible_time"] >= CONFIRM_TIME * 0.5:
-                    color = (0, 165, 255)  # Orange = almost confirmed
-                    thickness = 2
+                    label = f"ID:{t['id']} LOCKED"
+                    color = (0, 0, 255)  # Red
+                    if t.get("distance"):
+                        info = f"{t['distance']:.1f}m {t['direction']}"
+                        cv2.putText(annotated_frame, info, (x1, y2 + 20),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                 else:
-                    color = (0, 255, 0)  # Green = tracking
-                    thickness = 2
+                    label = f"ID:{t['id']} {t['visible_time']:.1f}s"
+                    color = (0, 255, 0)  # Green
                 
-                cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-                
-                # Draw center dot
-                cv2.circle(frame, (cx, cy), 4, color, -1)
-                
-                # Label
-                label = f"ID:{t['id']} {t['visible_time']:.1f}s"
-                cv2.putText(frame, label, (x1, y1 - 10),
+                cv2.putText(annotated_frame, label, (x1, y1 - 25),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-                
-                if t["logged"] and t.get("distance"):
-                    info = f"{t['distance']:.1f}m {t['direction']}"
-                    cv2.putText(frame, info, (x1, y2 + 20),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-                    cv2.putText(frame, "LOCKED", (x1, y2 + 40),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
             
-            # Draw frame center crosshair (drone position reference)
-            fcx, fcy = FRAME_W // 2, FRAME_H // 2
-            cv2.line(frame, (fcx - 20, fcy), (fcx + 20, fcy), (255, 255, 0), 1)
-            cv2.line(frame, (fcx, fcy - 20), (fcx, fcy + 20), (255, 255, 0), 1)
-            
-            # Draw heading indicator (arrow pointing direction camera faces)
-            arrow_len = 40
-            arrow_end_x = int(fcx + arrow_len * math.sin(math.radians(camera_heading)))
-            arrow_end_y = int(fcy - arrow_len * math.cos(math.radians(camera_heading)))
-            cv2.arrowedLine(frame, (fcx, fcy), (arrow_end_x, arrow_end_y), (0, 255, 255), 2, tipLength=0.3)
-            
-            # Status bar with heading
+            # Status bar
             heading_color = (0, 255, 0) if heading_source == "GPS" else (0, 165, 255)
-            status = f"F:{frame_count} | T:{detection_count} | GPS:{pos['sats']}sat"
-            cv2.putText(frame, status, (10, 25),
+            status = f"F:{frame_count} | T:{detection_count} | GPS:{pos['sats']}sat | HDG:{camera_heading:.0f}°"
+            cv2.putText(annotated_frame, status, (10, 25),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            cv2.putText(frame, f"{lat0:.6f}, {lon0:.6f}", (10, 50),
+            cv2.putText(annotated_frame, f"{lat0:.6f}, {lon0:.6f}", (10, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            cv2.putText(frame, f"CAM: {camera_heading:.0f}° [{heading_source}]", (10, 75),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, heading_color, 2)
             
-            out.write(frame)
+            # Write frame to video (real-time to save memory)
+            out.write(annotated_frame)
+            
+            # Progress indicator every 100 frames
+            if frame_count % 100 == 0:
+                print(f"[RUNNING] Frame {frame_count} | Targets: {detection_count}")
         
     except Exception as e:
         print(f"\n[ERROR] {e}")
@@ -531,27 +662,45 @@ def main():
     
     finally:
         print("\n" + "=" * 60)
-        print("SHUTDOWN")
+        print("SHUTDOWN - Saving outputs...")
         print("=" * 60)
+        
+        if buzzer:
+            buzzer.cleanup()
+            print("[BUZZER] ✓ Cleaned up")
         
         if cap:
             cap.release()
             print("[CAMERA] ✓ Released")
         
-        if out:
-            out.release()
-            print(f"[VIDEO] ✓ Saved {VIDEO_PATH}")
-        
         if gps:
             gps.stop()
             print("[GPS] ✓ Stopped")
         
-        if csv_f:
-            csv_f.close()
-            print(f"[CSV] ✓ Saved {CSV_PATH}")
+        if csv_delivery:
+            csv_delivery.close()
+            print(f"[CSV] ✓ Saved {CSV_DELIVERY}")
+        
+        if csv_detailed:
+            csv_detailed.close()
+            print(f"[CSV] ✓ Saved {CSV_DETAILED}")
+        
+        if out:
+            out.release()
+            print(f"[VIDEO] ✓ Saved {VIDEO_PATH}")
         
         print(f"\n📊 Summary: {frame_count} frames, {detection_count} targets")
+        print(f"📁 Files saved:")
+        print(f"   - {VIDEO_PATH} (annotated video)")
+        print(f"   - {CSV_DELIVERY} (lat, lon, alt for delivery drone)")
+        print(f"   - {CSV_DETAILED} (full details with IDs)")
         print("=" * 60)
+        
+        # Send coordinates to delivery drone
+        if detection_count > 0:
+            send_csv_to_delivery_drone()
+        else:
+            print("\n[SCP] No targets detected - skipping delivery drone upload")
 
 
 if __name__ == "__main__":
