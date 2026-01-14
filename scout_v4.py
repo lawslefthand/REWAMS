@@ -326,6 +326,7 @@ def signal_handler(sig, frame):
 
 def main():
     global shutdown_flag
+    global CALIBRATION_HEADING
     
     signal.signal(signal.SIGINT, signal_handler)
     
@@ -388,7 +389,6 @@ def main():
             print(f"[GPS] ✓ Heading available: {pos['heading']:.1f}°")
             # Auto-set calibration heading to current heading at startup
             if CALIBRATION_HEADING == 0.0:
-                global CALIBRATION_HEADING
                 CALIBRATION_HEADING = pos['heading']
                 print(f"[GPS] ✓ Auto-set calibration heading to {CALIBRATION_HEADING:.1f}°")
         else:
@@ -593,18 +593,18 @@ def main():
                 # Log if confirmed and not already logged
                 if not t["logged"] and t["visible_time"] >= CONFIRM_TIME:
                     
-                    # GUARD 1: Reject if heading jumped too much (turn in progress)
-                    heading_jump = abs(camera_heading - last_valid_heading)
-                    if heading_jump > 180:
-                        heading_jump = 360 - heading_jump  # Handle wraparound
-                    if heading_jump > HEADING_JUMP_THRESHOLD:
-                        continue  # Skip this frame, wait for stable heading
-                    
                     cx, cy = t["px"]
                     
                     # Use locked GPS reference if available, else current
                     ref_lat, ref_lon = t.get("gps_ref", (lat0, lon0))
                     ref_heading = t.get("heading_ref", camera_heading)
+                    
+                    # GUARD 1: Reject if heading jumped too much since lock (turn in progress)
+                    heading_jump = abs(camera_heading - ref_heading)
+                    if heading_jump > 180:
+                        heading_jump = 360 - heading_jump  # Handle wraparound
+                    if heading_jump > HEADING_JUMP_THRESHOLD:
+                        continue  # Skip this frame, wait for stable heading
                     
                     # Convert pixel to camera-frame offset (meters)
                     cam_east, cam_north = pixel_to_ground(cx, cy, H)
